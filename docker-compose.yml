@@ -1,0 +1,65 @@
+# 2110318 Distributed Systems Essentials — ZooKeeper homework, Part A (Coordination)
+#
+#   zk1, zk2, zk3 : a 3-server ZooKeeper ensemble; the locks live here
+#   storage       : a tiny HTTP service that holds one shared counter
+#   dev           : the container where you run all your Python code
+#
+# Start:  docker compose up -d          (wait about 20 s)
+# Shell:  docker compose exec dev bash
+# Stop:   docker compose down -v        (also deletes all ZooKeeper data)
+
+x-zk: &zk
+  image: zookeeper:3.9
+  restart: "no"
+  environment: &zkenv
+    ZOO_TICK_TIME: "2000"
+    ZOO_INIT_LIMIT: "5"
+    ZOO_SYNC_LIMIT: "2"
+    ZOO_SERVERS: >-
+      server.1=zk1:2888:3888;2181
+      server.2=zk2:2888:3888;2181
+      server.3=zk3:2888:3888;2181
+    ZOO_4LW_COMMANDS_WHITELIST: "srvr,stat,ruok,mntr"
+    ZK_SERVER_HEAP: "256"   # MB per server
+  networks: [zknet]
+
+services:
+  zk1:
+    <<: *zk
+    container_name: zk1
+    hostname: zk1
+    environment: { <<: *zkenv, ZOO_MY_ID: "1" }
+  zk2:
+    <<: *zk
+    container_name: zk2
+    hostname: zk2
+    environment: { <<: *zkenv, ZOO_MY_ID: "2" }
+  zk3:
+    <<: *zk
+    container_name: zk3
+    hostname: zk3
+    environment: { <<: *zkenv, ZOO_MY_ID: "3" }
+
+  storage:
+    image: python:3.12-slim
+    container_name: storage
+    working_dir: /work
+    volumes: [".:/work"]
+    command: python -u lib/storage_server.py
+    networks: [zknet]
+
+  dev:
+    image: python:3.12-slim
+    container_name: dev
+    working_dir: /work
+    volumes: [".:/work"]
+    environment:
+      PYTHONPATH: /work
+      PYTHONUNBUFFERED: "1"
+    command: sh -c "pip install -q -r requirements.txt && sleep infinity"
+    networks: [zknet]
+    depends_on: [zk1, zk2, zk3, storage]
+
+networks:
+  zknet:
+    name: zkhw_a
